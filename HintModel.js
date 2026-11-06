@@ -137,6 +137,7 @@ function contextualize(row, flags) {
   else if (d === "Move window to scratchpad") d = "Hide window (minimize)"
   else if (d === "Move window to workspace") d = "Send window to workspace"
   else if (d === "Switch to workspace") d = "Go to workspace"
+  else if (d === "File manager (cwd)") d = "Files in this folder"
   else if (d === "Toggle window split") d = "Flip split direction"
   return { key: row.key, desc: d, category: row.category }
 }
@@ -147,28 +148,98 @@ function priority(row) {
   return 100 + row.order
 }
 
-// { sections: [{ title, rows }], hidden, total, next: [{ mod, count, summary }] }
-function view(bindings, mods, flags, maxRows) {
+// Apps worth a hotkey given what's in the focused window, by innermost app.
+// Matched against Omarchy's binding descriptions on any Super layer.
+var SUGGESTIONS = [
+  { when: /^(Claude Code|Codex)$/, picks: [/^File manager \(cwd\)$/, /^File manager$/, /^Capture menu$/,
+      /^Clipboard manager$/, /^Browser$/, /^Editor$/, /^Passwords$/] },
+  { when: /^(herdr|Ghostty)/, picks: [/^File manager \(cwd\)$/, /^Editor$/, /^Browser$/, /^Docker$/,
+      /^Clipboard manager$/, /^File manager$/] },
+  { when: /^Browser$/, picks: [/^Passwords$/, /^File manager$/, /^Email$/, /^Calendar$/,
+      /^Capture menu$/, /^Clipboard manager$/] },
+  { when: /^Files$/, picks: [/^Terminal$/, /^Editor$/, /^Browser$/, /^Capture menu$/] },
+  { when: /.*/, picks: [/^Terminal$/, /^Browser$/, /^File manager$/, /^Apps menu$/, /^Editor$/] }
+]
+
+// Everything launchable from a Super chord, for an empty desktop.
+var LAUNCHER_EXTRAS = /^(Terminal|Herdr|Tmux|Apps menu|Calculator|Activity)$/
+
+// Rows on every Super layer, with keys spelled from Super: "Shift F", "Alt Space".
+function superRows(bindings) {
+  var out = []
+  var sets = {}
+  bindings.forEach(function(b) {
+    if (b.mods.split(" ").indexOf("SUPER") === -1) return
+    ;(sets[b.mods] = sets[b.mods] || []).push(b)
+  })
+  Object.keys(sets).sort(function(a, b) { return a.split(" ").length - b.split(" ").length }).forEach(function(mods) {
+    var extra = mods.replace(/^SUPER ?/, "").split(" ").filter(String)
+      .map(function(m) { return m.charAt(0) + m.slice(1).toLowerCase() }).join(" ")
+    collapse(sets[mods]).forEach(function(row) {
+      row.key = extra ? extra + " " + row.key : row.key
+      out.push(row)
+    })
+  })
+  return out
+}
+
+function pick(rows, patterns) {
+  var out = []
+  patterns.forEach(function(rx) {
+    var row = rows.filter(function(r) { return rx.test(r.desc) })[0]
+    if (row && out.indexOf(row) === -1) out.push(row)
+  })
+  return out
+}
+
+// { sections: [{ title, rows }], launcher: [rows], hidden, total, next: [{ mod, count, summary }] }
+// ctx: { winClass, chain } - chain is the focused window's app stack, outermost first.
+function view(bindings, mods, flags, maxRows, ctx) {
   mods = canonicalMods(mods)
+  ctx = ctx || {}
+  var chain = ctx.chain || []
+  var emptyDesktop = !ctx.winClass
   var rows = collapse(bindings.filter(function(b) { return b.mods === mods }))
+  var suggested = []
+  var launcher = []
+
   if (mods === "SUPER") {
+    var everything = superRows(bindings)
+    if (emptyDesktop) {
+      // No window: window commands are moot, so make room for every app.
+      rows = rows.filter(function(r) { return r.category !== "Window" && r.category !== "Apps" })
+      launcher = everything.filter(function(r) { return r.category === "Apps" || LAUNCHER_EXTRAS.test(r.desc) })
+      launcher = launcher.filter(function(r, i) {
+        return launcher.findIndex(function(o) { return o.desc === r.desc }) === i
+      })
+    } else {
+      var inner = chain.length ? chain[chain.length - 1] : ""
+      var rule = SUGGESTIONS.filter(function(r) { return r.when.test(inner) })[0]
+      suggested = pick(everything, rule.picks).map(function(r) { return contextualize(r, flags || "") })
+      rows = rows.filter(function(r) { return r.category !== "Apps" })
+    }
     rows.sort(function(a, b) { return priority(a) - priority(b) })
-    var extras = extraRows(bindings)
-    rows = rows.slice(0, Math.max(0, maxRows - extras.length)).concat(extras, rows.slice(maxRows - extras.length))
+    var extras = emptyDesktop ? [] : extraRows(bindings)
+    var room = Math.max(0, maxRows - extras.length - suggested.length)
+    rows = rows.slice(0, room).concat(extras, rows.slice(room))
   }
   var total = rows.length
-  var shown = rows.slice(0, maxRows)
+  var shown = rows.slice(0, maxRows - suggested.length)
 
   var order = ["Window", "Workspaces", "Apps", "System"]
-  var sections = order.map(function(name) {
-    return {
-      title: name,
-      rows: shown.filter(function(r) { return r.category === name })
-        .map(function(r) { return contextualize(r, flags || "") })
+  var sections = []
+  order.forEach(function(name) {
+    var group = shown.filter(function(r) { return r.category === name })
+      .map(function(r) { return contextualize(r, flags || "") })
+    if (group.length) sections.push({ title: name, rows: group })
+    if (name === "Workspaces" && suggested.length) {
+      var inner = chain.length ? chain[chain.length - 1] : ""
+      sections.push({ title: inner ? "Handy with " + inner : "Handy apps", rows: suggested, accent: true })
     }
-  }).filter(function(s) { return s.rows.length > 0 })
+  })
 
-  return { sections: sections, hidden: total - shown.length, total: total, next: nextLayers(bindings, mods) }
+  return { sections: sections, launcher: launcher, hidden: total - shown.length, total: total,
+    next: nextLayers(bindings, mods) }
 }
 
 function extraRows(bindings) {

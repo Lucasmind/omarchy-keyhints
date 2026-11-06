@@ -11,9 +11,10 @@ Row {
 
   function tokens(keys) {
     var out = []
-    keys.split(" ").forEach(function(word) {
-      if (!word) return
-      if (word === "/") { out.push({ text: "/", sep: true }); return }
+    var words = keys.split(" ").filter(String)
+    words.forEach(function(word, i) {
+      // "Ctrl = / -" separates alternatives; a trailing "/" (Shift /) is the key itself.
+      if (word === "/" && i < words.length - 1) { out.push({ text: "/", sep: true }); return }
       var then = word.length > 1 && word.charAt(word.length - 1) === ","
       out.push({ text: then ? word.slice(0, -1) : word, sep: false })
       if (then) out.push({ text: "›", sep: true })

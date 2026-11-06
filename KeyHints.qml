@@ -30,18 +30,26 @@ Item {
   property string winTitle: ""
   property string winFlags: ""
   property var bindings: []
-  property var hints: ({ sections: [], hidden: 0, total: 0, next: [] })
+  property var hints: ({ sections: [], launcher: [], hidden: 0, total: 0, next: [] })
   property var appContext: ({ chain: [], sections: [] })
   property real contentOpacity: 1
 
   readonly property bool superOnly: mods === "SUPER"
   readonly property bool showApps: superOnly && appContext.sections.length > 0
+  readonly property int launcherRows: 16
+  // Empty desktop: every app launchable from a Super chord, in columns of 16.
+  readonly property var launcherColumns: {
+    var rows = hints.launcher || []
+    var out = []
+    for (var i = 0; i < rows.length; i += launcherRows) out.push(rows.slice(i, i + launcherRows))
+    return out
+  }
   // Games own the keyboard; a card over Helldivers is just noise.
   readonly property bool suppressed: /^steam_app_/.test(winClass)
   readonly property var modChips: mods.split(" ").map(function(m) { return m.charAt(0) + m.slice(1).toLowerCase() })
 
   function refreshHints() {
-    hints = HintModel.view(bindings, mods, winFlags, maxRows)
+    hints = HintModel.view(bindings, mods, winFlags, maxRows, { winClass: winClass, chain: appContext.chain })
   }
 
   function show(newMods, monitor, cls, title, flags) {
@@ -114,7 +122,10 @@ Item {
       onStreamFinished: {
         try {
           var parsed = JSON.parse(text)
-          if (parsed && Array.isArray(parsed.sections)) root.appContext = parsed
+          if (parsed && Array.isArray(parsed.sections)) {
+            root.appContext = parsed
+            root.refreshHints()  // app suggestions depend on the app stack
+          }
         } catch (e) { }
       }
     }
@@ -222,6 +233,7 @@ Item {
                   title: modelData.title
                   rows: modelData.rows
                   keyWidth: Style.space(110)
+                  appSection: modelData.accent === true
                 }
               }
 
@@ -251,6 +263,21 @@ Item {
                   keyWidth: Style.space(140)
                   appSection: true
                 }
+              }
+            }
+
+            // Empty-desktop launcher columns
+            Repeater {
+              model: root.superOnly ? root.launcherColumns : []
+              HintSection {
+                required property var modelData
+                required property int index
+                Layout.alignment: Qt.AlignTop
+                Layout.preferredWidth: Style.space(330)
+                title: index === 0 ? "Launch" : " "
+                rows: modelData
+                keyWidth: Style.space(120)
+                appSection: true
               }
             }
           }

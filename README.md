@@ -12,6 +12,13 @@ Omarchy shell plugin.
   - The Super view also pins the next layer's answers to "how do I move this?":
     `Shift 1–0` Send window to workspace, `Shift ←→↑↓` Swap, and `Alt S` Hide
     window (Omarchy's minimize).
+- **Apps for what you're doing.** With a window focused, the Apps section
+  becomes *Handy with <app>*. It offers apps that fit the innermost app,
+  wherever their hotkey lives. In Claude Code, for example, it shows Files in
+  this folder (`Shift Alt F`), Files, the capture menu, the clipboard, Browser,
+  Editor and Passwords. The rules are `SUGGESTIONS` in `HintModel.js`.
+- **Empty desktop.** Window commands drop out and a *Launch* panel lists every
+  app with a Super hotkey, in columns of 16.
 - **Footer: the next layer.** It shows what one more modifier unlocks, e.g.
   `+ Shift  apps · window  25`. Add that modifier and the card filters in place.
 - **Right column (Super only): the focused app stack**, innermost first. For
