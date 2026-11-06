@@ -199,13 +199,16 @@ function view(bindings, mods, flags, maxRows, ctx) {
   ctx = ctx || {}
   var chain = ctx.chain || []
   var emptyDesktop = !ctx.winClass
+  var appHints = ctx.appHints !== false  // off = Omarchy shortcuts only
   var rows = collapse(bindings.filter(function(b) { return b.mods === mods }))
   var suggested = []
   var launcher = []
 
   if (mods === "SUPER") {
     var everything = superRows(bindings)
-    if (emptyDesktop) {
+    if (!appHints) {
+      // Plain Omarchy view: keep its own Apps rows, no suggestions or launcher.
+    } else if (emptyDesktop) {
       // No window: window commands are moot, so make room for every app.
       rows = rows.filter(function(r) { return r.category !== "Window" && r.category !== "Apps" })
       launcher = everything.filter(function(r) { return r.category === "Apps" || LAUNCHER_EXTRAS.test(r.desc) })

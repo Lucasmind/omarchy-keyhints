@@ -31,11 +31,32 @@ Omarchy shell plugin.
 Pressing an actual shortcut hides the card until Super is released, so quick
 chords never flash it. Steam games (`steam_app_*`) never show it.
 
+## Bar icon and settings
+
+A keyboard icon sits on the right of the bar, after the tray. **Left-click** it
+to open the settings panel; **right-click** it to switch Key Hints on or off.
+The icon dims while it's off. The panel offers:
+
+- **On/off** switch.
+- **App hints:** the focused-app column, the *Handy with…* suggestions and the
+  empty-desktop launcher. Turn it off for plain Omarchy shortcuts only.
+- **Hold Super for:** Quick (150 ms), Normal (300 ms) or Relaxed (600 ms).
+
+Settings are saved to `~/.config/keyhints/settings.json` and pushed to the
+overlay over IPC (`omarchy-shell keyhints setPrefs '<json>'`), so changes
+apply immediately.
+
+The icon is `{"id": "keyhints"}` in `bar.layout.right` of
+`~/.config/omarchy/shell.json`. The overlay itself is enabled through
+`plugins[]`. `omarchy bar put keyhints` sees that entry, reports "already on
+the bar" and adds nothing, so add the layout entry by hand.
+
 ## How it works
 
 | Piece | Role |
 |---|---|
 | `hypr/keyhints.lua` | Hyprland observer. Watches `input.keyboard.key` and reads modifier state; never binds or consumes keys. Sends `show`/`update`/`hide` to the shell over IPC, along with the window's class, title and state. |
+| `SettingsWidget.qml` | Bar icon and settings panel. It isn't named `BarWidget.qml` because that clashes with the shell's own `BarWidget` type and fails to load with "File name case mismatch". |
 | `KeyHints.qml` | The overlay: a full-screen, click-through, focus-free dim layer on the active monitor, with the hints styled from Omarchy's theme tokens. |
 | `HintModel.js` | Parses, groups and condenses bindings, rewords them by window state, and summarizes the next layers. |
 | `bin/keyhints-context` | Detects the app stack in the focused window and prints its hints as JSON (Python, `-I`). |
@@ -49,8 +70,8 @@ The one-tick key-event deferral comes from
 
 ## Tuning
 
-These settings are at the top of `KeyHints.qml`: `holdDelay` (300 ms) and
-`maxRows` (18).
+`maxRows` (18) is at the top of `KeyHints.qml`. Everything else is in the bar
+panel.
 
 ## Theming
 

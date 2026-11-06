@@ -17,7 +17,10 @@ Item {
   id: root
 
   // ------------------------------------------------------------ settings
-  readonly property int holdDelay: 300        // ms Super must be held before the card shows
+  // On/off, app hints and hold delay are set from the bar icon (SettingsWidget.qml),
+  // which saves them here and pushes each change over IPC (setPrefs).
+  readonly property string settingsPath: Quickshell.env("HOME") + "/.config/keyhints/settings.json"
+  property var prefs: ({ enabled: true, appHints: true, holdDelay: 300 })
   readonly property int maxRows: 18           // Omarchy rows before "+N more"
   readonly property string contextScript: String(Qt.resolvedUrl("bin/keyhints-context")).replace(/^file:\/\//, "")
 
@@ -37,7 +40,7 @@ Item {
   property real contentOpacity: 1
 
   readonly property bool superOnly: mods === "SUPER"
-  readonly property bool showApps: superOnly && appContext.sections.length > 0
+  readonly property bool showApps: superOnly && prefs.appHints && appContext.sections.length > 0
   readonly property int launcherRows: 16
   // Empty desktop: every app launchable from a Super chord, in columns of 16.
   readonly property var launcherColumns: {
@@ -51,7 +54,8 @@ Item {
   readonly property var modChips: mods.split(" ").map(function(m) { return m.charAt(0) + m.slice(1).toLowerCase() })
 
   function refreshHints() {
-    hints = HintModel.view(bindings, mods, winFlags, maxRows, { winClass: winClass, chain: appContext.chain })
+    hints = HintModel.view(bindings, mods, winFlags, maxRows,
+      { winClass: winClass, chain: appContext.chain, appHints: prefs.appHints })
   }
 
   function show(newMods, monitor, cls, title, flags) {
@@ -62,11 +66,13 @@ Item {
     winTitle = title
     winFlags = flags
     refreshHints()
-    if (suppressed) return
+    if (suppressed || !prefs.enabled) return
     if (!sameWindow) appContext = { chain: [], sections: [] }
-    contextProcess.running = false
-    contextProcess.command = [contextScript, cls, title]
-    contextProcess.running = true
+    if (prefs.appHints) {
+      contextProcess.running = false
+      contextProcess.command = [contextScript, cls, title]
+      contextProcess.running = true
+    }
     holdTimer.restart()
   }
 
@@ -91,9 +97,27 @@ Item {
     bindingProcess.running = true
   }
 
+  function loadPrefs(text) {
+    var next = { enabled: true, appHints: true, holdDelay: 300 }
+    try {
+      var saved = JSON.parse(text || "{}")
+      for (var k in next) if (saved[k] !== undefined) next[k] = saved[k]
+    } catch (e) { }
+    prefs = next
+    if (!prefs.enabled) hide()
+    refreshHints()
+  }
+
+  FileView {
+    path: root.settingsPath
+    printErrors: false
+    onLoaded: root.loadPrefs(text())
+    onLoadFailed: root.loadPrefs("")
+  }
+
   Timer {
     id: holdTimer
-    interval: root.holdDelay
+    interval: Number(root.prefs.holdDelay) || 300
     onTriggered: root.opened = true
   }
 
@@ -144,6 +168,7 @@ Item {
     function hide(): string { root.hide(); return "ok" }
     function reload(): string { root.reload(); return "ok" }
     function state(): string { return root.opened ? root.mods : "closed" }
+    function setPrefs(json: string): string { root.loadPrefs(json); return "ok" }
   }
 
   Component.onCompleted: bindingProcess.running = true
@@ -209,7 +234,7 @@ Item {
             Item { Layout.fillWidth: true; Layout.minimumWidth: Style.space(16) }
 
             Text {
-              visible: root.superOnly && root.appContext.chain.length > 0
+              visible: root.showApps && root.appContext.chain.length > 0
               text: root.appContext.chain.join("  ›  ")
               color: root.theme.muted
               font.family: Style.font.family
@@ -272,7 +297,7 @@ Item {
 
             // Empty-desktop launcher columns
             Repeater {
-              model: root.superOnly ? root.launcherColumns : []
+              model: root.superOnly && root.prefs.appHints ? root.launcherColumns : []
               HintSection {
                 required property var modelData
                 required property int index
