@@ -1,0 +1,12 @@
+#!/bin/bash
+# Run every Key Hints check. Needs node, lua and python3; qmllint is optional.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+node tests/model.test.js
+lua tests/state.test.lua
+python3 -I tests/context_test.py
+luac -p hypr/*.lua
+python3 -I -m py_compile bin/keyhints-context bin/keyhints-keymap bin/keyhints-install
+for f in packs/*.json manifest.json; do python3 -I -m json.tool "$f" >/dev/null; done
+if command -v omarchy >/dev/null; then omarchy plugin validate . >/dev/null; fi
+echo "all checks passed"

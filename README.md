@@ -1,91 +1,129 @@
 # Key Hints
 
-Hold **Super** and, after a moment, the whole screen dims and shortcut hints
-appear in the top-right corner, under the bar, with no box around them. It's an
-Omarchy shell plugin.
+Hold **Super** and, after a moment, the screen dims and the shortcuts you can
+use right now appear in the top-right corner. Add Shift, Ctrl or Alt and the
+hints switch to that layer. Let go and they're gone.
 
-- **Left column: Omarchy shortcuts** for the modifiers you're holding, read live
-  from `omarchy-menu-keybindings --print` so custom bindings show up.
-  - Families are collapsed, e.g. `1–0 Go to workspace` or `←→↑↓ Focus window`.
-  - Labels follow the window's state: *Float window* versus *Tile window*,
-    *Exit full screen*, *Ungroup windows*.
-  - The Super view also pins the next layer's answers to "how do I move this?":
-    `Shift 1–0` Send window to workspace, `Shift ←→↑↓` Swap, and `Alt S` Hide
-    window (Omarchy's minimize).
-- **Apps for what you're doing.** With a window focused, the Apps section
-  becomes *Handy with <app>*. It offers apps that fit the innermost app,
-  wherever their hotkey lives. In Claude Code, for example, it shows Files in
-  this folder (`Shift Alt F`), Files, the capture menu, the clipboard, Browser,
-  Editor and Passwords. The rules are `SUGGESTIONS` in `HintModel.js`.
-- **Empty desktop.** Window commands drop out and a *Launch* panel lists every
-  app with a Super hotkey, in columns of 16.
-- **Footer: the next layer.** It shows what one more modifier unlocks, e.g.
-  `+ Shift  apps · window  25`. Add that modifier and the card filters in place.
-- **Right column (Super only): the focused app stack**, innermost first. For
-  example, Ghostty › herdr › Claude Code.
-  - Ghostty hints come from `ghostty +list-keybinds`.
-  - herdr hints come from `~/.config/herdr/config.toml`.
-  - The agent in the focused herdr pane comes from `herdr api snapshot`.
-  - Other apps use the JSON packs in `packs/`.
+Key Hints is an [Omarchy](https://omarchy.org) 4 shell plugin. It reads your
+real bindings, so custom shortcuts show up, and it follows your theme.
 
-Pressing an actual shortcut hides the card until Super is released, so quick
-chords never flash it. Steam games (`steam_app_*`) never show it.
+## What it shows
 
-## Bar icon and settings
+- **Omarchy shortcuts** for the modifiers you're holding.
+  - Families are condensed: `1–0` Go to workspace, `←→↑↓` Focus window.
+  - Labels follow the focused window: *Float* or *Tile window*, *Exit full
+    screen*, *Ungroup windows*.
+  - Holding Super alone also pins the answers to "how do I move this window?",
+    even though they live one layer deeper: `Shift 1–0` Send window to
+    workspace, `Shift ←→↑↓` Swap, and `Alt S` Hide window (Omarchy's minimize).
+- **The next layer.** The footer shows what one more modifier unlocks, for
+  example `+ Shift  apps · window  25`.
+- **Hints for the focused app**, innermost first. A terminal running Claude
+  Code inside herdr shows *Ghostty › herdr › Claude Code*, with each one's keys.
+  - Ghostty's keys come from `ghostty +list-keybinds`, herdr's from its
+    `config.toml`, and the agent in the focused herdr pane from `herdr api`.
+  - Other apps use the JSON packs in `packs/` (browsers, Files, Codex).
+- **Apps that suit what you're doing.** *Handy with Claude Code* offers Files
+  in this folder, the capture menu, the clipboard, Browser and Editor. A
+  browser gets Passwords, Email and Calendar.
+- **Every launchable app** when no window is focused, since window commands
+  don't apply then.
+- **What you're still learning** (optional). Shortcuts you already use fade and
+  sink; the three most useful ones you've never tried are highlighted. See
+  [Learning](#learning).
 
-A keyboard icon sits on the right of the bar, after the tray. **Left-click** it
-to open the settings panel; **right-click** it to switch Key Hints on or off.
-The icon dims while it's off. The panel offers:
+The hints get out of the way. Pressing a shortcut, dragging a window with
+Super held, or switching workspace hides them until you release Super, so
+quick chords never flash them. They never appear over Steam games, and by
+default not over full-screen windows either.
 
-- **On/off** switch.
-- **App hints:** the focused-app column, the *Handy with…* suggestions and the
-  empty-desktop launcher. Turn it off for plain Omarchy shortcuts only.
-- **Hold Super for:** Quick (150 ms), Normal (300 ms) or Relaxed (600 ms).
+## Install
 
-Settings are saved to `~/.config/keyhints/settings.json` and pushed to the
-overlay over IPC (`omarchy-shell keyhints setPrefs '<json>'`), so changes
-apply immediately.
+```bash
+omarchy plugin add https://github.com/Lucasmind/omarchy-keyhints.git
+~/.config/omarchy/plugins/keyhints/bin/keyhints-install
+```
 
-The icon is `{"id": "keyhints"}` in `bar.layout.right` of
-`~/.config/omarchy/shell.json`. The overlay itself is enabled through
-`plugins[]`. `omarchy bar put keyhints` sees that entry, reports "already on
-the bar" and adds nothing, so add the layout entry by hand.
+The installer:
 
-## How it works
+- enables the plugin;
+- puts the keyboard icon in the bar after the tray;
+- adds a marked, guarded block to `~/.config/hypr/hyprland.lua`. The block
+  checks the plugin file exists and loads it under `pcall`, so a missing or
+  broken plugin can't stop Hyprland from starting;
+- restarts the shell.
 
-| Piece | Role |
-|---|---|
-| `hypr/keyhints.lua` | Hyprland observer. Watches `input.keyboard.key` and reads modifier state; never binds or consumes keys. Sends `show`/`update`/`hide` to the shell over IPC, along with the window's class, title and state. |
-| `SettingsWidget.qml` | Bar icon and settings panel. It isn't named `BarWidget.qml` because that clashes with the shell's own `BarWidget` type and fails to load with "File name case mismatch". |
-| `KeyHints.qml` | The overlay: a full-screen, click-through, focus-free dim layer on the active monitor, with the hints styled from Omarchy's theme tokens. |
-| `HintModel.js` | Parses, groups and condenses bindings, rewords them by window state, and summarizes the next layers. |
-| `bin/keyhints-context` | Detects the app stack in the focused window and prints its hints as JSON (Python, `-I`). |
-| `packs/*.json` | Static hint packs. Add your own in `~/.config/keyhints/packs/`. |
+Every file it edits gets a timestamped `.bak.<time>` copy, and symlinked
+dotfiles are edited at their target. If Hyprland reports config errors after
+the change, the installer rolls back. It's safe to run again.
 
-The observer is loaded from `~/.config/hypr/hyprland.lua` by a guarded block:
-it checks that the file exists and runs it under `pcall`.
+Requires Omarchy 4 with Hyprland 0.55 or newer and its Lua config, plus
+`python3` and `xkbcli`, which are both in the Omarchy base install.
 
-The one-tick key-event deferral comes from
-[NextKey](https://github.com/russellmorton/next-key) (MIT).
+### Update
 
-## Tuning
+```bash
+omarchy plugin update keyhints
+~/.config/omarchy/plugins/keyhints/bin/keyhints-install   # restarts the shell to load the new version
+```
 
-`maxRows` (18) is at the top of `KeyHints.qml`. Everything else is in the bar
-panel.
+### Uninstall
+
+```bash
+~/.config/omarchy/plugins/keyhints/bin/keyhints-install --uninstall   # add --purge to delete settings and usage
+omarchy plugin remove keyhints
+```
+
+## Settings
+
+Click the **keyboard icon** in the bar for settings; right-click it to switch
+Key Hints on or off. The icon dims while it's off.
+
+| Setting | Default | |
+|---|---|---|
+| On/off | on | |
+| App hints | on | Focused-app hints, app suggestions and the empty-desktop launcher. Off leaves Omarchy shortcuts only. |
+| Show over full-screen windows | off | Full screen means Super F, not maximized (Super Alt F). |
+| Learn from my usage | on | See below. |
+| Hold Super for | Normal | Quick 150 ms, Normal 300 ms, Relaxed 600 ms. |
+
+Settings are saved to `~/.config/keyhints/settings.json`.
+
+## Learning
+
+With learning on, Key Hints counts the Super shortcuts you press. It records
+only presses that match one of your Omarchy bindings, as a count and the date
+last used per shortcut, in `~/.local/state/keyhints/usage.json`. It never
+records other keys, typing, apps or times, and the data never leaves your
+machine.
+
+After 30 presses it starts adapting:
+
+- A shortcut used **8 or more times** in the last 45 days counts as known.
+  It's shown faded and is the first to go when space runs out, which leaves
+  room for ones you don't know yet.
+- The **three most useful shortcuts you've never tried** in the current view
+  are shown in the accent color.
+- The settings panel shows how many shortcuts you use, are learning and
+  haven't tried. **Reset** clears the counts.
+
+Key presses arrive from Hyprland as raw keycodes. `bin/keyhints-keymap`
+converts them to key names for your configured layout (`input:kb_layout`),
+so non-US layouts count correctly.
 
 ## Theming
 
 Key Hints follows the active Omarchy theme and updates live on
-`omarchy theme set`. Colors come from the shell's `Color` tokens, and
-fonts, sizes, corner radius and keycap borders from `Style`. Everything is
+`omarchy theme set`. Colors come from the shell's `Color` tokens. Fonts,
+sizes, corner radius and keycap borders come from `Style`. Everything is
 resolved in `components/KeyTheme.qml`:
 
 | Role | Default |
 |---|---|
 | Dim layer | theme `background` at 88%, so light themes dim to light |
 | Text | `menu.text` |
-| Headings, modifier keys | theme `accent` |
-| Keycaps | the theme's `[controls]` normal state (color, border alpha and width) |
+| Headings, modifier keys, "try this" | theme `accent` |
+| Keycaps | the theme's `[controls]` normal state |
 
 A theme can tune any role by shipping `shell.keyhints.toml`. You can override
 one for every theme under `[keyhints]` in `~/.config/omarchy/shell.toml`:
@@ -101,11 +139,9 @@ key-border-width = 0    # flat keycaps
 Roles: `scrim`, `scrim-alpha`, `text`, `muted-alpha`, `heading`, `key`,
 `key-fill-alpha`, `key-border`, `key-border-alpha`, `key-border-width`.
 
-The plugin is `keepLoaded`, so saving a file does **not** hot-reload it. Run
-`omarchy restart shell` after edits; the bar blinks for about a second. Changes to
-`hypr/keyhints.lua` need `hyprctl reload` instead.
-
 ## Adding an app pack
+
+Drop a JSON file in `~/.config/keyhints/packs/`:
 
 ```json
 { "id": "obsidian", "name": "Obsidian",
@@ -113,16 +149,48 @@ The plugin is `keepLoaded`, so saving a file does **not** hot-reload it. Run
   "hints": [ { "keys": "Ctrl P", "desc": "Command palette" } ] }
 ```
 
-## Debug
+`match.class` and the optional `match.title` are regular expressions tested
+against the focused window. App suggestions are the `SUGGESTIONS` rules at the
+top of `HintModel.js`.
+
+## How it works
+
+| Piece | Role |
+|---|---|
+| `hypr/keyhints.lua` | Hyprland observer, loaded from `hyprland.lua`. Watches `input.keyboard.key`, the pointer (only while Super is held) and workspace changes. Never binds or consumes input. Talks to the shell over IPC. |
+| `hypr/KeyhintsState.lua` | The observer's state machine, kept free of Hyprland calls for testing. |
+| `KeyHints.qml` | The overlay: a full-screen, click-through, focus-free dim layer on the active monitor. Also owns settings and usage. |
+| `HintModel.js` | Parses, groups and condenses bindings, rewords by window state, suggests apps, applies usage, summarizes the next layers. |
+| `SettingsWidget.qml` | Bar icon and settings panel, built from the shell's own panel components. Not named `BarWidget.qml`, which clashes with the shell's `BarWidget` type ("File name case mismatch"). |
+| `components/` | `KeyTheme` (colors), `HintSection`, `Keycap`. |
+| `bin/keyhints-context` | Works out the app stack in the focused window and prints its hints as JSON. |
+| `bin/keyhints-keymap` | Keycode → key name for the configured XKB layout. |
+| `bin/keyhints-install` | Install / uninstall. |
+
+The dim layer has an empty input region, so clicks, drags and scrolling go
+straight through to your windows.
+
+The one-tick key-event deferral comes from
+[NextKey](https://github.com/russellmorton/next-key) (MIT).
+
+## Development
 
 ```bash
-omarchy-shell keyhints show SUPER eDP-1 com.mitchellh.ghostty "Orthrus: orthrus-manager" ""
+tests/run          # model (node), state machine (lua), context script (python), lint, manifest
+```
+
+The plugin is `keepLoaded`, so saving a file does **not** hot-reload it. Run
+`omarchy restart shell` after QML or JS edits, and `hyprctl reload` after Lua
+edits.
+
+```bash
+omarchy-shell keyhints show SUPER eDP-1 com.mitchellh.ghostty "Host: workspace" ""
 omarchy-shell keyhints state
 omarchy-shell keyhints hide
+omarchy-shell keyhints stats
 bin/keyhints-context com.mitchellh.ghostty "Orthrus: orthrus-manager" | jq .
 ```
 
-## Remove
+## License
 
-Delete the Key Hints block at the bottom of `~/.config/hypr/hyprland.lua`, then
-run `omarchy plugin disable keyhints`.
+MIT

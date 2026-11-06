@@ -1,0 +1,152 @@
+#!/usr/bin/python3 -I
+"""Wire Key Hints into Omarchy, or take it back out.
+
+  keyhints-install              add the Hyprland hook and the bar icon, enable the plugin
+  keyhints-install --uninstall  remove both and disable the plugin (keeps settings and usage)
+  keyhints-install --uninstall --purge   also delete settings and usage data
+
+Safe to run repeatedly. Every file it edits gets a timestamped backup next to
+it; symlinked dotfiles are edited at their target. If Hyprland reports config
+errors after the change, the hook is rolled back.
+"""
+import json
+import shutil
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+HOME = Path.home()
+PLUGIN = Path(__file__).resolve().parent.parent
+HYPR = HOME / ".config/hypr/hyprland.lua"
+SHELL_JSON = HOME / ".config/omarchy/shell.json"
+DATA = [HOME / ".config/keyhints", HOME / ".local/state/keyhints", HOME / ".cache/keyhints"]
+
+BEGIN = "-- >>> keyhints >>>"
+END = "-- <<< keyhints <<<"
+HOOK = f"""{BEGIN}
+-- Key Hints: hold Super for shortcut hints. Managed by keyhints-install;
+-- guarded so a missing or broken plugin can't stop Hyprland from starting.
+local keyhints = os.getenv("HOME") .. "/.config/omarchy/plugins/keyhints/hypr/keyhints.lua"
+local keyhints_file = io.open(keyhints, "r")
+if keyhints_file then keyhints_file:close(); pcall(dofile, keyhints) end
+{END}
+"""
+# The unmarked block written before the installer existed.
+LEGACY_START = "-- Key Hints: hold Super for the shortcut card"
+
+
+def say(msg):
+    print(f"keyhints: {msg}")
+
+
+def run(*cmd):
+    return subprocess.run(cmd, capture_output=True, text=True)
+
+
+def backup(path):
+    copy = path.with_name(f"{path.name}.bak.{int(time.time())}")
+    shutil.copy2(path, copy)
+    return copy
+
+
+def strip_hook(text):
+    """Remove the managed block and the legacy unmarked block, if present."""
+    if BEGIN in text and END in text:
+        head, rest = text.split(BEGIN, 1)
+        text = head.rstrip("\n") + "\n" + rest.split(END, 1)[1].lstrip("\n")
+    if LEGACY_START in text:
+        lines = text.split("\n")
+        i = next(n for n, l in enumerate(lines) if l.startswith(LEGACY_START))
+        j = i
+        # Two comment lines, then the lines that mention keyhints.
+        while j < len(lines) and (j < i + 2 and lines[j].startswith("--") or "keyhints" in lines[j]):
+            j += 1
+        text = "\n".join(lines[:i]).rstrip("\n") + "\n" + "\n".join(lines[j:]).lstrip("\n")
+    return text
+
+
+def config_errors():
+    out = run("hyprctl", "configerrors").stdout.strip()
+    return "" if out in ("", "no errors") else out
+
+
+def edit_hypr(add):
+    target = HYPR.resolve()  # follow dotfile symlinks
+    if not target.exists():
+        say(f"{HYPR} not found; is this Omarchy 4 with the Lua Hyprland config?")
+        return False
+    original = target.read_text()
+    text = strip_hook(original)
+    if add:
+        text = text.rstrip("\n") + "\n\n" + HOOK
+    if text == original:
+        say("Hyprland hook already " + ("in place" if add else "absent"))
+        return True
+    saved = backup(target)
+    target.write_text(text)
+    run("hyprctl", "reload")
+    time.sleep(1)
+    errors = config_errors()
+    if errors:
+        shutil.copy2(saved, target)
+        run("hyprctl", "reload")
+        say(f"Hyprland rejected the change, restored {target}:\n{errors}")
+        return False
+    say(("added Hyprland hook to " if add else "removed Hyprland hook from ") + f"{target} (backup: {saved.name})")
+    return True
+
+
+def edit_bar(add):
+    if not SHELL_JSON.exists():
+        if add:
+            say("no ~/.config/omarchy/shell.json; add {\"id\": \"keyhints\"} to bar.layout.right yourself for the bar icon")
+        return
+    target = SHELL_JSON.resolve()
+    config = json.loads(target.read_text())
+    right = config.setdefault("bar", {}).setdefault("layout", {}).setdefault("right", [])
+    present = any(item.get("id") == "keyhints" for item in right)
+    if add == present:
+        say("bar icon already " + ("in place" if add else "absent"))
+        return
+    if add:
+        # `omarchy bar put` sees the overlay's plugins[] entry and adds nothing.
+        ids = [item.get("id") for item in right]
+        at = ids.index("omarchy.tray") + 1 if "omarchy.tray" in ids else 0
+        right.insert(at, {"id": "keyhints"})
+    else:
+        config["bar"]["layout"]["right"] = [item for item in right if item.get("id") != "keyhints"]
+    saved = backup(target)
+    target.write_text(json.dumps(config, indent=2) + "\n")
+    say(("added bar icon to " if add else "removed bar icon from ") + f"{target} (backup: {saved.name})")
+
+
+def main():
+    uninstall = "--uninstall" in sys.argv
+    if not shutil.which("omarchy-shell") or not shutil.which("hyprctl"):
+        sys.exit("keyhints: needs Omarchy 4 (omarchy-shell) and Hyprland")
+    missing = [tool for tool in ("xkbcli", "python3") if not shutil.which(tool)]
+    if missing:
+        say("missing " + ", ".join(missing) + ": usage learning (xkbcli) or app hints (python3) won't work")
+
+    if uninstall:
+        edit_hypr(add=False)
+        edit_bar(add=False)
+        run("omarchy", "plugin", "disable", "keyhints")
+        if "--purge" in sys.argv:
+            for path in DATA:
+                shutil.rmtree(path, ignore_errors=True)
+            say("deleted settings, usage and cache")
+        say("uninstalled; remove the plugin folder with: omarchy plugin remove keyhints")
+        return
+
+    run("omarchy", "plugin", "enable", "keyhints")
+    edit_bar(add=True)
+    if edit_hypr(add=True):
+        # keepLoaded plugins don't hot-reload, so restart the shell to load this version.
+        run("omarchy", "restart", "shell")
+        say("installed. Hold Super to try it; click the keyboard icon in the bar for settings.")
+
+
+if __name__ == "__main__":
+    main()

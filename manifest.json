@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "keyhints",
   "name": "Key Hints",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "author": "Rob Lucas",
   "description": "Hold Super to dim the screen and see context-aware shortcuts: window and workspace keys, the next modifier layers, hints for the focused app, and handy apps.",
   "kinds": [
