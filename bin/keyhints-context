@@ -1,0 +1,246 @@
+#!/usr/bin/python3 -I
+"""Work out what is running in the focused window and print app hints as JSON.
+
+Usage: keyhints-context <window-class> <window-title>
+
+Output: {"chain": ["Ghostty", "herdr", "Claude Code"],
+         "sections": [{"app": "Claude Code", "hints": [{"keys": "...", "desc": "..."}]}]}
+
+Live sources where they exist (Ghostty's effective keybinds, herdr's config.toml
+and its API for the focused pane's agent); static packs in ../packs otherwise.
+"""
+import json
+import os
+import re
+import socket
+import subprocess
+import sys
+import tomllib
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent.parent
+HOME = Path.home()
+CACHE = Path(os.environ.get("XDG_CACHE_HOME", HOME / ".cache")) / "keyhints"
+
+KEY_NAMES = {
+    "ctrl": "Ctrl", "control": "Ctrl", "shift": "Shift", "alt": "Alt", "super": "Super",
+    "enter": "Enter", "return": "Enter", "esc": "Esc", "escape": "Esc", "space": "Space",
+    "tab": "Tab", "arrow_left": "←", "arrow_right": "→", "arrow_up": "↑", "arrow_down": "↓",
+    "left": "←", "right": "→", "up": "↑", "down": "↓", "page_up": "PgUp", "page_down": "PgDn",
+    "equal": "=", "minus": "-", "plus": "+",
+}
+
+
+def key_label(combo):
+    """'ctrl+shift+arrow_left' -> 'Ctrl Shift ←'."""
+    out = []
+    for part in re.split(r"\+(?=.)", combo):
+        name = KEY_NAMES.get(part.lower())
+        out.append(name if name else (part.upper() if len(part) == 1 else part.capitalize()))
+    return " ".join(out)
+
+
+def run(cmd, timeout=0.5):
+    try:
+        return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout).stdout
+    except (OSError, subprocess.SubprocessError):
+        return ""
+
+
+# ------------------------------------------------------------------- Ghostty
+
+GHOSTTY_PICKS = [
+    # (action, label, shown when herdr is running inside)
+    ("new_tab", "New tab", False),
+    ("new_split:right", "Split right", False),
+    ("new_split:down", "Split down", False),
+    ("goto_split:*", "Focus split", False),
+    ("toggle_split_zoom", "Zoom split", False),
+    ("start_search", "Search scrollback", False),
+    ("jump_to_prompt:*", "Jump between prompts", False),
+    ("increase_font_size:*|decrease_font_size:*", "Font size", True),
+    ("copy_to_clipboard:*", "Copy", True),
+    ("paste_from_clipboard", "Paste", True),
+    ("toggle_command_palette", "Command palette", True),
+]
+
+
+def ghostty_binds():
+    """Ghostty's effective keybinds, cached until its config or binary changes."""
+    sources = [HOME / ".config/ghostty/config", Path("/usr/bin/ghostty")]
+    stamp = ":".join(str(p.stat().st_mtime_ns) if p.exists() else "-" for p in sources)
+    cache = CACHE / "ghostty-binds.txt"
+    try:
+        cached_stamp, text = cache.read_text().split("\n", 1)
+        if cached_stamp == stamp:
+            return text
+    except (OSError, ValueError):
+        pass
+    text = run(["ghostty", "+list-keybinds"], timeout=2)
+    if text:
+        CACHE.mkdir(parents=True, exist_ok=True)
+        cache.write_text(stamp + "\n" + text)
+    return text
+
+
+def ghostty_hints(inside_herdr):
+    first_combo = {}  # action -> its first (primary) combo
+    for line in ghostty_binds().splitlines():
+        # A combo can't end in "+", so "ctrl++=..." (the + key) is skipped; "ctrl+=" covers it.
+        m = re.match(r"keybind = (.+?[^+])=(.+)$", line.strip())
+        if not m or m.group(1).startswith(("copy", "paste")) or "insert" in m.group(1):
+            continue  # skip the hardware copy/paste keys and the Insert-key variants
+        first_combo.setdefault(m.group(2), m.group(1))
+    hints = []
+    for pattern, label, with_herdr in GHOSTTY_PICKS:
+        if inside_herdr and not with_herdr:
+            continue
+        rx = re.compile("^(" + "|".join(re.escape(p).replace(r"\*", ".*") for p in pattern.split("|")) + ")$")
+        combos = [c for a, c in first_combo.items() if rx.match(a)]
+        if combos:
+            hints.append({"keys": family_label(combos), "desc": label})
+    return hints
+
+
+def family_label(combos):
+    """Collapse 'ctrl+alt+arrow_up', 'ctrl+alt+arrow_down', ... into 'Ctrl Alt ↑↓'.
+    Uses the modifier set shared by the most combos."""
+    if len(combos) == 1:
+        return key_label(combos[0])
+    groups = {}
+    for combo in combos:
+        head, _, tail = combo.rpartition("+")
+        groups.setdefault(head, []).append(tail)
+    head, tails = max(groups.items(), key=lambda item: len(item[1]))
+    labels = [key_label(t) for t in tails]
+    arrows = all(label in "←→↑↓" for label in labels)
+    return key_label(head) + " " + ("".join(labels) if arrows else " / ".join(labels))
+
+
+# --------------------------------------------------------------------- herdr
+
+HERDR_PICKS = [
+    ("split_horizontal", "Split pane"),
+    ("focus_pane_*", "Focus pane"),
+    ("previous_tab|next_tab", "Prev / next tab"),
+    ("new_tab", "New tab"),
+    ("zoom", "Zoom pane"),
+    ("close_pane", "Close pane"),
+    ("previous_workspace|next_workspace", "Prev / next workspace"),
+    ("split_vertical", "Split pane, other way"),
+    ("detach", "Detach (keeps running)"),
+    ("help", "All herdr keys"),
+]
+
+
+def herdr_hints():
+    try:
+        keys = tomllib.loads((HOME / ".config/herdr/config.toml").read_text()).get("keys", {})
+    except (OSError, tomllib.TOMLDecodeError):
+        return []
+    prefix = key_label(keys.get("prefix", "ctrl+b"))
+
+    def best(value):
+        # Prefer a direct chord over a prefix sequence; it's quicker to type.
+        values = value if isinstance(value, list) else [value]
+        return next((v for v in values if not v.startswith("prefix+")), values[0])
+
+    def fmt(combos):
+        if combos[0].startswith("prefix+"):
+            return prefix + ", " + key_label(combos[0][len("prefix+"):])
+        return family_label(combos)
+
+    hints = []
+    for pattern, label in HERDR_PICKS:
+        rx = re.compile("^(" + "|".join(re.escape(p).replace(r"\*", ".*") for p in pattern.split("|")) + ")$")
+        combos = [best(keys[k]) for k in keys if rx.match(k)]
+        if combos:
+            hints.append({"keys": fmt(combos), "desc": label})
+    return hints
+
+
+def herdr_focused_agent(workspace_label):
+    """Agent in the focused pane of the local herdr session, or None if the
+    window isn't showing that session."""
+    try:
+        snap = json.loads(run(["herdr", "api", "snapshot"]) or "{}")["result"]["snapshot"]
+    except (ValueError, KeyError, TypeError):
+        return False, None
+    labels = {w.get("label") for w in snap.get("workspaces", [])}
+    if workspace_label not in labels:
+        return False, None
+    focused = snap.get("focused_pane_id")
+    for pane in snap.get("panes", []):
+        if pane.get("pane_id") == focused:
+            return True, pane.get("agent")
+    return True, None
+
+
+# ---------------------------------------------------------------- static packs
+
+def load_packs():
+    packs = []
+    for directory in (HERE / "packs", HOME / ".config/keyhints/packs"):
+        for path in sorted(directory.glob("*.json")):
+            try:
+                packs.append(json.loads(path.read_text()))
+            except (OSError, ValueError):
+                pass
+    return packs
+
+
+def pack_named(packs, name):
+    return next((p for p in packs if p.get("id") == name), None)
+
+
+def matches(pack, window_class, title):
+    match = pack.get("match") or {}
+    if not match:
+        return False
+    if "class" in match and not re.search(match["class"], window_class, re.I):
+        return False
+    if "title" in match and not re.search(match["title"], title):
+        return False
+    return True
+
+
+AGENT_PACKS = {"claude": "claude-code", "codex": "codex"}
+
+
+def main():
+    window_class = sys.argv[1] if len(sys.argv) > 1 else ""
+    title = sys.argv[2] if len(sys.argv) > 2 else ""
+    packs = load_packs()
+    layers = []  # (app, hints, limit), outermost first
+
+    if re.search(r"ghostty", window_class, re.I):
+        herdr_host, agent = None, None
+        m = re.match(r"^(\S+): (.+)$", title)  # herdr titles the window "<Host>: <workspace>"
+        if m:
+            if m.group(1).lower() == socket.gethostname().lower():
+                is_local, agent = herdr_focused_agent(m.group(2))
+                herdr_host = "local" if is_local else None
+            else:
+                herdr_host = m.group(1)  # herdr on another machine, over ssh
+        if not agent and re.search(r"^✳|Claude Code", title):
+            agent = "claude"
+
+        layers.append(("Ghostty", ghostty_hints(inside_herdr=bool(herdr_host)), 3 if herdr_host else 6))
+        if herdr_host:
+            name = "herdr" if herdr_host == "local" else "herdr @ " + herdr_host
+            layers.append((name, herdr_hints(), 5))
+        pack = pack_named(packs, AGENT_PACKS.get(agent, ""))
+        if pack:
+            layers.append((pack["name"], pack["hints"], 5))
+    else:
+        pack = next((p for p in packs if matches(p, window_class, title)), None)
+        if pack:
+            layers.append((pack["name"], pack["hints"], 8))
+
+    # The innermost app is the one you're typing into, so its hints come first.
+    sections = [{"app": app, "hints": hints[:limit]} for app, hints, limit in reversed(layers) if hints]
+    json.dump({"chain": [app for app, _, _ in layers], "sections": sections}, sys.stdout, ensure_ascii=False)
+
+
+if __name__ == "__main__":
+    main()

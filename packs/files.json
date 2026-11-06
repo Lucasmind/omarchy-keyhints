@@ -1,0 +1,13 @@
+{
+  "id": "files",
+  "name": "Files",
+  "match": { "class": "^org\\.gnome\\.Nautilus$" },
+  "hints": [
+    { "keys": "Ctrl L", "desc": "Type a path" },
+    { "keys": "Ctrl H", "desc": "Show hidden files" },
+    { "keys": "F2", "desc": "Rename" },
+    { "keys": "Ctrl Shift N", "desc": "New folder" },
+    { "keys": "Space", "desc": "Quick preview" },
+    { "keys": "Alt ↑", "desc": "Parent folder" }
+  ]
+}

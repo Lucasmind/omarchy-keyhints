@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "id": "keyhints",
+  "name": "Key Hints",
+  "version": "0.1.0",
+  "author": "Rob Lucas",
+  "description": "Hold Super for a quiet, context-aware cheat card in the top-right corner: window and workspace shortcuts, the next modifier layers, and hints for the focused app.",
+  "kinds": [
+    "overlay"
+  ],
+  "keepLoaded": true,
+  "entryPoints": {
+    "overlay": "KeyHints.qml"
+  }
+}

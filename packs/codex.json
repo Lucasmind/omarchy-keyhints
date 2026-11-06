@@ -1,0 +1,10 @@
+{
+  "id": "codex",
+  "name": "Codex",
+  "hints": [
+    { "keys": "Esc", "desc": "Interrupt" },
+    { "keys": "Ctrl C", "desc": "Cancel / quit" },
+    { "keys": "/", "desc": "Commands" },
+    { "keys": "@", "desc": "Mention a file" }
+  ]
+}

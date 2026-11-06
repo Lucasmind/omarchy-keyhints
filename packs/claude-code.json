@@ -1,0 +1,18 @@
+{
+  "id": "claude-code",
+  "name": "Claude Code",
+  "source": "https://code.claude.com/docs/en/interactive-mode (checked 2026-11-06)",
+  "hints": [
+    { "keys": "Shift Tab", "desc": "Cycle modes (plan / auto)" },
+    { "keys": "Esc", "desc": "Interrupt Claude" },
+    { "keys": "Esc Esc", "desc": "Rewind / clear draft" },
+    { "keys": "Ctrl O", "desc": "Transcript viewer" },
+    { "keys": "Ctrl R", "desc": "Search prompt history" },
+    { "keys": "Ctrl G", "desc": "Edit prompt in $EDITOR" },
+    { "keys": "Ctrl B", "desc": "Background the running task" },
+    { "keys": "Ctrl T", "desc": "Task checklist" },
+    { "keys": "Alt P", "desc": "Switch model" },
+    { "keys": "Ctrl S", "desc": "Stash / restore prompt" },
+    { "keys": "?", "desc": "All shortcuts (empty prompt)" }
+  ]
+}

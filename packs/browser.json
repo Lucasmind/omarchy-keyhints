@@ -1,0 +1,15 @@
+{
+  "id": "browser",
+  "name": "Browser",
+  "match": { "class": "^(chromium|google-chrome|brave-browser|firefox|zen)$" },
+  "hints": [
+    { "keys": "Ctrl L", "desc": "Address bar" },
+    { "keys": "Ctrl T", "desc": "New tab" },
+    { "keys": "Ctrl Shift T", "desc": "Reopen closed tab" },
+    { "keys": "Ctrl W", "desc": "Close tab" },
+    { "keys": "Ctrl Tab", "desc": "Next tab" },
+    { "keys": "Ctrl F", "desc": "Find in page" },
+    { "keys": "Alt ←→", "desc": "Back / forward" },
+    { "keys": "Ctrl Shift N", "desc": "Private window" }
+  ]
+}
