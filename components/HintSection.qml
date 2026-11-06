@@ -11,13 +11,13 @@ ColumnLayout {
   property real keyWidth: Style.space(84)
   property bool appSection: false
 
-  spacing: Style.spacing.xs
+  spacing: Style.spacing.sm
 
   Text {
     text: root.title.toUpperCase()
-    color: root.appSection ? Util.alpha(Color.accent, 0.85) : Util.alpha(Color.popups.text, 0.45)
+    color: root.appSection ? Util.alpha(Color.accent, 0.85) : Util.alpha(Color.popups.text, 0.62)
     font.family: Style.font.family
-    font.pixelSize: Style.font.caption
+    font.pixelSize: Style.font.body
     font.bold: true
     font.letterSpacing: 1
     bottomPadding: Style.spacing.xxs
@@ -45,10 +45,10 @@ ColumnLayout {
         Layout.fillWidth: true
         text: modelData.desc
         color: Color.popups.text
-        opacity: 0.88
+        opacity: 0.95
         elide: Text.ElideRight
         font.family: Style.font.family
-        font.pixelSize: Style.font.bodySmall
+        font.pixelSize: Style.font.heading
       }
     }
   }

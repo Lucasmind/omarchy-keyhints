@@ -6,8 +6,8 @@
 -- (github.com/russellmorton/next-key, MIT): input.keyboard.key fires before
 -- Hyprland updates the state hl.is_key_down() reads.
 
--- Frosted glass behind the translucent card; the QML does its own fade.
-hl.layer_rule({ match = { namespace = "^keyhints$" }, blur = true, ignore_alpha = 0.05, no_anim = true })
+-- The QML does its own dim and fade.
+hl.layer_rule({ match = { namespace = "^keyhints$" }, no_anim = true })
 
 local MODIFIER_KEYCODES = {
   [37] = true, [105] = true, -- Control_L / Control_R

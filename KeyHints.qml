@@ -8,8 +8,8 @@ import qs.Ui
 import "components"
 import "HintModel.js" as HintModel
 
-// Hold Super: after a short delay a translucent card appears in the top-right
-// corner, under the bar. Left column: Omarchy shortcuts for the held modifiers
+// Hold Super: after a short delay the whole screen dims and the hints appear
+// in the top-right corner, under the bar, with no card around them. Left column: Omarchy shortcuts for the held modifiers
 // plus what one more modifier unlocks. Right column (Super only): hints for the
 // app stack in the focused window, e.g. Ghostty › herdr › Claude Code.
 // Driven by hypr/keyhints.lua over IPC; never takes keyboard or pointer input.
@@ -18,8 +18,8 @@ Item {
 
   // ------------------------------------------------------------ settings
   readonly property int holdDelay: 300        // ms Super must be held before the card shows
-  readonly property int maxRows: 14           // Omarchy rows before "+N more"
-  readonly property real glassAlpha: 0.86     // card background opacity (blurred behind)
+  readonly property int maxRows: 18           // Omarchy rows before "+N more"
+  readonly property real dimAlpha: 0.80       // how dark the desktop goes behind the hints
   readonly property string contextScript: String(Qt.resolvedUrl("bin/keyhints-context")).replace(/^file:\/\//, "")
 
   // ------------------------------------------------------------ state
@@ -145,15 +145,11 @@ Item {
       readonly property bool isTarget: String(modelData.name || "") === root.targetMonitor
 
       screen: modelData
-      visible: isTarget && (root.opened || card.opacity > 0.01)
-      anchors { top: true; right: true }
-      margins { top: Style.gapsOut * 2; right: Style.gapsOut * 2 }
-      implicitWidth: card.width
-      implicitHeight: card.height
+      visible: isTarget && (root.opened || scrim.opacity > 0.01)
+      anchors { top: true; right: true; bottom: true; left: true }
       color: "transparent"
-      // Sit below the bar rather than over it, without reserving space.
-      exclusionMode: ExclusionMode.Normal
-      exclusiveZone: 0
+      // Cover the whole output, bar included, and stay click-through.
+      exclusionMode: ExclusionMode.Ignore
       mask: Region {}
 
       WlrLayershell.namespace: "keyhints"
@@ -161,23 +157,27 @@ Item {
       WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
 
       Rectangle {
+        id: scrim
+        anchors.fill: parent
+        color: Util.alpha("black", root.dimAlpha)
+        opacity: root.opened ? 1 : 0
+        Behavior on opacity { NumberAnimation { duration: root.opened ? 160 : 100; easing.type: Easing.OutCubic } }
+      }
+
+      Item {
         id: card
 
-        width: body.implicitWidth + Style.spacing.popupPadding * 2
-        height: body.implicitHeight + Style.spacing.popupPadding * 2
-        radius: Style.cornerRadius
-        color: Util.alpha(Color.popups.background, root.glassAlpha)
-        border.width: Math.max(1, Style.spacing.hairline)
-        border.color: Util.alpha(Color.popups.border, 0.45)
-        opacity: root.opened ? 1 : 0
-        transform: Translate { y: root.opened ? 0 : -Style.space(6) }
-
-        Behavior on opacity { NumberAnimation { duration: root.opened ? 140 : 90; easing.type: Easing.OutCubic } }
+        anchors.top: parent.top
+        anchors.right: parent.right
+        anchors.topMargin: Style.bar.sizeHorizontal + Style.space(28)
+        anchors.rightMargin: Style.space(40)
+        width: body.implicitWidth
+        height: body.implicitHeight
+        opacity: scrim.opacity
+        transform: Translate { y: root.opened ? 0 : -Style.space(8) }
 
         ColumnLayout {
           id: body
-          x: Style.spacing.popupPadding
-          y: Style.spacing.popupPadding
           spacing: Style.spacing.xl
           opacity: root.contentOpacity
 
@@ -200,18 +200,18 @@ Item {
               text: root.appContext.chain.join("  ›  ")
               color: Util.alpha(Color.popups.text, 0.55)
               font.family: Style.font.family
-              font.pixelSize: Style.font.caption
+              font.pixelSize: Style.font.body
             }
           }
 
           RowLayout {
-            spacing: Style.spacing.huge
+            spacing: Style.space(48)
             Layout.alignment: Qt.AlignTop
 
             // Omarchy column
             ColumnLayout {
               Layout.alignment: Qt.AlignTop
-              Layout.preferredWidth: Style.space(262)
+              Layout.preferredWidth: Style.space(400)
               spacing: Style.spacing.lg
 
               Repeater {
@@ -221,7 +221,7 @@ Item {
                   Layout.fillWidth: true
                   title: modelData.title
                   rows: modelData.rows
-                  keyWidth: Style.space(84)
+                  keyWidth: Style.space(110)
                 }
               }
 
@@ -230,7 +230,7 @@ Item {
                 text: "Nothing bound here"
                 color: Util.alpha(Color.popups.text, 0.55)
                 font.family: Style.font.family
-                font.pixelSize: Style.font.bodySmall
+                font.pixelSize: Style.font.title
               }
             }
 
@@ -238,7 +238,7 @@ Item {
             ColumnLayout {
               visible: root.showApps
               Layout.alignment: Qt.AlignTop
-              Layout.preferredWidth: Style.space(262)
+              Layout.preferredWidth: Style.space(400)
               spacing: Style.spacing.lg
 
               Repeater {
@@ -248,7 +248,7 @@ Item {
                   Layout.fillWidth: true
                   title: modelData.app
                   rows: modelData.hints
-                  keyWidth: Style.space(104)
+                  keyWidth: Style.space(140)
                   appSection: true
                 }
               }
@@ -278,7 +278,7 @@ Item {
                   text: "+"
                   color: Util.alpha(Color.popups.text, 0.45)
                   font.family: Style.font.family
-                  font.pixelSize: Style.font.caption
+                  font.pixelSize: Style.font.body
                 }
                 Keycap { keys: modelData.mod.charAt(0) + modelData.mod.slice(1).toLowerCase() }
                 Text {
@@ -286,7 +286,7 @@ Item {
                   text: modelData.summary + "  " + modelData.count
                   color: Util.alpha(Color.popups.text, 0.6)
                   font.family: Style.font.family
-                  font.pixelSize: Style.font.caption
+                  font.pixelSize: Style.font.body
                 }
               }
             }
@@ -297,7 +297,7 @@ Item {
             text: "+" + root.hints.hidden + " more  ·  Super K lists every shortcut"
             color: Util.alpha(Color.popups.text, 0.42)
             font.family: Style.font.family
-            font.pixelSize: Style.font.caption
+            font.pixelSize: Style.font.body
           }
         }
       }

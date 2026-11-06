@@ -1,7 +1,8 @@
 # Key Hints
 
-Hold **Super** and, after a moment, a translucent frosted card appears in the
-top-right corner, under the bar. It's an Omarchy shell plugin.
+Hold **Super** and, after a moment, the whole screen dims and shortcut hints
+appear in the top-right corner, under the bar, with no box around them. It's an
+Omarchy shell plugin.
 
 - **Left column: Omarchy shortcuts** for the modifiers you're holding, read live
   from `omarchy-menu-keybindings --print` so custom bindings show up.
@@ -27,8 +28,8 @@ chords never flash it. Steam games (`steam_app_*`) never show it.
 
 | Piece | Role |
 |---|---|
-| `hypr/keyhints.lua` | Hyprland observer. Watches `input.keyboard.key` and reads modifier state; never binds or consumes keys. Sends `show`/`update`/`hide` to the shell over IPC, along with the window's class, title and state. Adds a blur layer rule. |
-| `KeyHints.qml` | The overlay: a click-through, focus-free layer-shell surface on the active monitor, styled from Omarchy's theme tokens. |
+| `hypr/keyhints.lua` | Hyprland observer. Watches `input.keyboard.key` and reads modifier state; never binds or consumes keys. Sends `show`/`update`/`hide` to the shell over IPC, along with the window's class, title and state. |
+| `KeyHints.qml` | The overlay: a full-screen, click-through, focus-free dim layer on the active monitor, with the hints styled from Omarchy's theme tokens. |
 | `HintModel.js` | Parses, groups and condenses bindings, rewords them by window state, and summarizes the next layers. |
 | `bin/keyhints-context` | Detects the app stack in the focused window and prints its hints as JSON (Python, `-I`). |
 | `packs/*.json` | Static hint packs. Add your own in `~/.config/keyhints/packs/`. |
@@ -42,7 +43,12 @@ The one-tick key-event deferral comes from
 ## Tuning
 
 These settings are at the top of `KeyHints.qml`: `holdDelay` (300 ms),
-`maxRows` (14) and `glassAlpha` (0.86). The shell hot-reloads the plugin on save.
+`maxRows` (18) and `dimAlpha` (0.80). Font sizes come from Omarchy's theme
+tokens, so they follow `[font] base-size` in the theme's `shell.toml`.
+
+The plugin is `keepLoaded`, so saving a file does **not** hot-reload it. Run
+`omarchy restart shell` after edits; the bar blinks for about a second. Changes to
+`hypr/keyhints.lua` need `hyprctl reload` instead.
 
 ## Adding an app pack
 
