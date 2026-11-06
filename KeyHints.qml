@@ -19,8 +19,10 @@ Item {
   // ------------------------------------------------------------ settings
   readonly property int holdDelay: 300        // ms Super must be held before the card shows
   readonly property int maxRows: 18           // Omarchy rows before "+N more"
-  readonly property real dimAlpha: 0.80       // how dark the desktop goes behind the hints
   readonly property string contextScript: String(Qt.resolvedUrl("bin/keyhints-context")).replace(/^file:\/\//, "")
+
+  // Colors come from the active Omarchy theme; see components/KeyTheme.qml.
+  readonly property KeyTheme theme: KeyTheme {}
 
   // ------------------------------------------------------------ state
   property bool opened: false
@@ -170,7 +172,7 @@ Item {
       Rectangle {
         id: scrim
         anchors.fill: parent
-        color: Util.alpha("black", root.dimAlpha)
+        color: root.theme.scrim
         opacity: root.opened ? 1 : 0
         Behavior on opacity { NumberAnimation { duration: root.opened ? 160 : 100; easing.type: Easing.OutCubic } }
       }
@@ -201,7 +203,7 @@ Item {
 
             Repeater {
               model: root.modChips
-              Keycap { required property string modelData; keys: modelData; accent: true }
+              Keycap { required property string modelData; keys: modelData; accent: true; theme: root.theme }
             }
 
             Item { Layout.fillWidth: true; Layout.minimumWidth: Style.space(16) }
@@ -209,7 +211,7 @@ Item {
             Text {
               visible: root.superOnly && root.appContext.chain.length > 0
               text: root.appContext.chain.join("  ›  ")
-              color: Util.alpha(Color.popups.text, 0.55)
+              color: root.theme.muted
               font.family: Style.font.family
               font.pixelSize: Style.font.body
             }
@@ -229,6 +231,7 @@ Item {
                 model: root.hints.sections
                 HintSection {
                   required property var modelData
+                  theme: root.theme
                   Layout.fillWidth: true
                   title: modelData.title
                   rows: modelData.rows
@@ -240,7 +243,7 @@ Item {
               Text {
                 visible: root.hints.sections.length === 0
                 text: "Nothing bound here"
-                color: Util.alpha(Color.popups.text, 0.55)
+                color: root.theme.muted
                 font.family: Style.font.family
                 font.pixelSize: Style.font.title
               }
@@ -257,6 +260,7 @@ Item {
                 model: root.showApps ? root.appContext.sections : []
                 HintSection {
                   required property var modelData
+                  theme: root.theme
                   Layout.fillWidth: true
                   title: modelData.app
                   rows: modelData.hints
@@ -272,6 +276,7 @@ Item {
               HintSection {
                 required property var modelData
                 required property int index
+                theme: root.theme
                 Layout.alignment: Qt.AlignTop
                 Layout.preferredWidth: Style.space(330)
                 title: index === 0 ? "Launch" : " "
@@ -286,7 +291,7 @@ Item {
           Rectangle {
             Layout.fillWidth: true
             implicitHeight: Math.max(1, Style.spacing.hairline)
-            color: Util.alpha(Color.popups.border, 0.25)
+            color: Util.alpha(root.theme.text, 0.18)
             visible: root.hints.next.length > 0 || root.hints.hidden > 0
           }
 
@@ -303,15 +308,15 @@ Item {
                 Text {
                   anchors.verticalCenter: parent.verticalCenter
                   text: "+"
-                  color: Util.alpha(Color.popups.text, 0.45)
+                  color: root.theme.muted
                   font.family: Style.font.family
                   font.pixelSize: Style.font.body
                 }
-                Keycap { keys: modelData.mod.charAt(0) + modelData.mod.slice(1).toLowerCase() }
+                Keycap { keys: modelData.mod.charAt(0) + modelData.mod.slice(1).toLowerCase(); theme: root.theme }
                 Text {
                   anchors.verticalCenter: parent.verticalCenter
                   text: modelData.summary + "  " + modelData.count
-                  color: Util.alpha(Color.popups.text, 0.6)
+                  color: root.theme.muted
                   font.family: Style.font.family
                   font.pixelSize: Style.font.body
                 }
@@ -322,7 +327,7 @@ Item {
           Text {
             visible: root.hints.hidden > 0
             text: "+" + root.hints.hidden + " more  ·  Super K lists every shortcut"
-            color: Util.alpha(Color.popups.text, 0.42)
+            color: root.theme.muted
             font.family: Style.font.family
             font.pixelSize: Style.font.body
           }

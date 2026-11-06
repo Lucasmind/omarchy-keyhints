@@ -49,9 +49,36 @@ The one-tick key-event deferral comes from
 
 ## Tuning
 
-These settings are at the top of `KeyHints.qml`: `holdDelay` (300 ms),
-`maxRows` (18) and `dimAlpha` (0.80). Font sizes come from Omarchy's theme
-tokens, so they follow `[font] base-size` in the theme's `shell.toml`.
+These settings are at the top of `KeyHints.qml`: `holdDelay` (300 ms) and
+`maxRows` (18).
+
+## Theming
+
+Key Hints follows the active Omarchy theme and updates live on
+`omarchy theme set`. Colors come from the shell's `Color` tokens, and
+fonts, sizes, corner radius and keycap borders from `Style`. Everything is
+resolved in `components/KeyTheme.qml`:
+
+| Role | Default |
+|---|---|
+| Dim layer | theme `background` at 88%, so light themes dim to light |
+| Text | `menu.text` |
+| Headings, modifier keys | theme `accent` |
+| Keycaps | the theme's `[controls]` normal state (color, border alpha and width) |
+
+A theme can tune any role by shipping `shell.keyhints.toml`. You can override
+one for every theme under `[keyhints]` in `~/.config/omarchy/shell.toml`:
+
+```toml
+[keyhints]
+scrim-alpha = 0.92      # darker dim
+scrim = "#000000"       # always black instead of the theme background
+heading = "urgent"      # any palette role or hex color
+key-border-width = 0    # flat keycaps
+```
+
+Roles: `scrim`, `scrim-alpha`, `text`, `muted-alpha`, `heading`, `key`,
+`key-fill-alpha`, `key-border`, `key-border-alpha`, `key-border-width`.
 
 The plugin is `keepLoaded`, so saving a file does **not** hot-reload it. Run
 `omarchy restart shell` after edits; the bar blinks for about a second. Changes to

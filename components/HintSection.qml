@@ -10,12 +10,13 @@ ColumnLayout {
   property var rows: []
   property real keyWidth: Style.space(84)
   property bool appSection: false
+  required property KeyTheme theme
 
   spacing: Style.spacing.sm
 
   Text {
     text: root.title.toUpperCase()
-    color: root.appSection ? Util.alpha(Color.accent, 0.85) : Util.alpha(Color.popups.text, 0.62)
+    color: root.appSection ? root.theme.heading : root.theme.muted
     font.family: Style.font.family
     font.pixelSize: Style.font.body
     font.bold: true
@@ -38,13 +39,14 @@ ColumnLayout {
           id: caps
           anchors.right: parent.right
           keys: modelData.keys !== undefined ? modelData.keys : modelData.key
+          theme: root.theme
         }
       }
 
       Text {
         Layout.fillWidth: true
         text: modelData.desc
-        color: Color.popups.text
+        color: root.theme.text
         opacity: 0.95
         elide: Text.ElideRight
         font.family: Style.font.family

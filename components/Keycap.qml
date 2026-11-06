@@ -8,6 +8,7 @@ Row {
 
   required property string keys
   property bool accent: false
+  required property KeyTheme theme
 
   function tokens(keys) {
     var out = []
@@ -32,17 +33,17 @@ Row {
 
       implicitWidth: modelData.sep ? label.implicitWidth : Math.max(implicitHeight, label.implicitWidth + Style.spacing.md * 2)
       implicitHeight: Style.space(24)
-      radius: Math.min(Style.cornerRadius, Style.space(4))
-      color: modelData.sep ? "transparent" : Util.alpha(Color.popups.text, 0.10)
-      border.width: modelData.sep ? 0 : Math.max(1, Style.spacing.hairline)
-      border.color: Util.alpha(root.accent ? Color.accent : Color.popups.border, root.accent ? 0.55 : 0.35)
+      radius: root.theme.keyRadius
+      color: modelData.sep ? "transparent" : (root.accent ? Util.alpha(root.theme.accent, 0.12) : root.theme.keyFill)
+      border.width: modelData.sep ? 0 : root.theme.keyBorderWidth
+      border.color: root.accent ? Util.alpha(root.theme.accent, 0.6) : root.theme.keyBorder
 
       Text {
         id: label
         anchors.centerIn: parent
         text: modelData.text
-        color: modelData.sep ? Util.alpha(Color.popups.text, 0.45)
-          : (root.accent ? Color.accent : Color.popups.text)
+        color: modelData.sep ? root.theme.muted
+          : (root.accent ? root.theme.accent : root.theme.keyText)
         font.family: Style.font.family
         font.pixelSize: Style.font.subtitle
         font.bold: !modelData.sep
