@@ -20,7 +20,7 @@ Item {
   // On/off, app hints and hold delay are set from the bar icon (SettingsWidget.qml),
   // which saves them here and pushes each change over IPC (setPrefs).
   readonly property string settingsPath: Quickshell.env("HOME") + "/.config/keyhints/settings.json"
-  property var prefs: ({ enabled: true, appHints: true, holdDelay: 300 })
+  property var prefs: ({ enabled: true, appHints: true, holdDelay: 300, learning: true, overFullscreen: false })
   readonly property int maxRows: 18           // Omarchy rows before "+N more"
   readonly property string contextScript: String(Qt.resolvedUrl("bin/keyhints-context")).replace(/^file:\/\//, "")
 
@@ -51,11 +51,57 @@ Item {
   }
   // Games own the keyboard; a card over Helldivers is just noise.
   readonly property bool suppressed: /^steam_app_/.test(winClass)
+    || (!prefs.overFullscreen && winFlags.split(",").indexOf("fullscreen") !== -1)
+
+  // ------------------------------------------------------------ usage learning
+  // Counts Super chords that match a real Omarchy binding: no other keys, no
+  // typing, no app names or timestamps beyond the day a shortcut was last used.
+  readonly property string usagePath: Quickshell.env("HOME") + "/.local/state/keyhints/usage.json"
+  readonly property int recentDays: 45
+  readonly property int baselinePresses: 30   // before this, just count; no markers
+  property var keymap: ({})                   // XKB keycode -> key name, from bin/keyhints-keymap
+  property var usageData: ({ version: 1, keys: {} })
+  readonly property var recentUsage: {
+    var out = {}
+    var cutoff = Date.now() - recentDays * 86400000
+    var keys = usageData.keys || {}
+    for (var id in keys) out[id] = Date.parse(keys[id].last) >= cutoff ? keys[id].n : 0
+    return out
+  }
+  readonly property int totalPresses: {
+    var sum = 0
+    for (var id in recentUsage) sum += recentUsage[id]
+    return sum
+  }
+
+  function recordPress(newMods, keycode) {
+    if (!prefs.enabled || !prefs.learning) return
+    var mods = HintModel.canonicalMods(newMods)
+    var name = keymap[String(keycode)]
+    if (!name) return
+    var known = bindings.some(function(b) { return b.mods === mods && b.key.toUpperCase() === name })
+    if (!known) return
+    var next = JSON.parse(JSON.stringify(usageData))
+    var id = mods + "+" + name
+    var entry = next.keys[id] || { n: 0 }
+    entry.n += 1
+    entry.last = new Date().toISOString().slice(0, 10)
+    next.keys[id] = entry
+    usageData = next
+    usageSaveTimer.restart()
+  }
+
+  function resetUsage() {
+    usageData = { version: 1, keys: {} }
+    usageFile.setText(JSON.stringify(usageData, null, 2) + "\n")
+    refreshHints()
+  }
   readonly property var modChips: mods.split(" ").map(function(m) { return m.charAt(0) + m.slice(1).toLowerCase() })
 
   function refreshHints() {
     hints = HintModel.view(bindings, mods, winFlags, maxRows,
-      { winClass: winClass, chain: appContext.chain, appHints: prefs.appHints })
+      { winClass: winClass, chain: appContext.chain, appHints: prefs.appHints,
+        usage: recentUsage, learning: prefs.learning && totalPresses >= baselinePresses })
   }
 
   function show(newMods, monitor, cls, title, flags) {
@@ -95,10 +141,11 @@ Item {
   function reload() {
     hide()
     bindingProcess.running = true
+    keymapProcess.running = true
   }
 
   function loadPrefs(text) {
-    var next = { enabled: true, appHints: true, holdDelay: 300 }
+    var next = { enabled: true, appHints: true, holdDelay: 300, learning: true, overFullscreen: false }
     try {
       var saved = JSON.parse(text || "{}")
       for (var k in next) if (saved[k] !== undefined) next[k] = saved[k]
@@ -106,6 +153,36 @@ Item {
     prefs = next
     if (!prefs.enabled) hide()
     refreshHints()
+  }
+
+  FileView {
+    id: usageFile
+    path: root.usagePath
+    atomicWrites: true
+    printErrors: false
+    onLoaded: {
+      try {
+        var parsed = JSON.parse(text())
+        if (parsed && parsed.keys) root.usageData = parsed
+      } catch (e) { }
+    }
+  }
+
+  Timer {
+    id: usageSaveTimer
+    interval: 3000
+    onTriggered: usageFile.setText(JSON.stringify(root.usageData, null, 2) + "\n")
+  }
+
+  Process {
+    id: keymapProcess
+    command: [String(Qt.resolvedUrl("bin/keyhints-keymap")).replace(/^file:\/\//, "")]
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
+        try { root.keymap = JSON.parse(text) } catch (e) { }
+      }
+    }
   }
 
   FileView {
@@ -169,9 +246,20 @@ Item {
     function reload(): string { root.reload(); return "ok" }
     function state(): string { return root.opened ? root.mods : "closed" }
     function setPrefs(json: string): string { root.loadPrefs(json); return "ok" }
+    function pressed(mods: string, keycode: string): string { root.recordPress(mods, keycode); return "ok" }
+    function resetUsage(): string { root.resetUsage(); return "ok" }
+    function stats(): string {
+      var s = HintModel.usageStats(root.bindings, root.recentUsage)
+      s.presses = root.totalPresses
+      s.baseline = root.baselinePresses
+      return JSON.stringify(s)
+    }
   }
 
-  Component.onCompleted: bindingProcess.running = true
+  Component.onCompleted: {
+    bindingProcess.running = true
+    keymapProcess.running = true
+  }
 
   Variants {
     model: Quickshell.screens

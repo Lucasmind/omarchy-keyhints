@@ -1,0 +1,45 @@
+#!/usr/bin/python3 -I
+"""Print {keycode: KEYNAME} for Hyprland's configured keyboard layout as JSON.
+
+Hyprland's input.keyboard.key event carries only the XKB keycode, so Key Hints
+uses this to match a pressed Super chord against Omarchy's bindings (which
+name keys, e.g. "W", "RETURN", "LEFT"). Names are the first keysym of each key,
+upper-cased to match `omarchy-menu-keybindings --print`.
+"""
+import json
+import re
+import subprocess
+import sys
+
+
+def option(name):
+    out = subprocess.run(["hyprctl", "getoption", name], capture_output=True, text=True).stdout
+    m = re.search(r"^str: (.*)$", out, re.M)
+    return (m.group(1).strip() if m else "").split(",")[0]  # first layout is the default
+
+
+def main():
+    cmd = ["xkbcli", "compile-keymap"]
+    for flag, opt in (("--layout", "input:kb_layout"), ("--variant", "input:kb_variant"), ("--model", "input:kb_model")):
+        value = option(opt)
+        if value:
+            cmd += [flag, value]
+    try:
+        keymap = subprocess.run(cmd, capture_output=True, text=True, timeout=5).stdout
+    except (OSError, subprocess.SubprocessError):
+        keymap = ""
+
+    codes = dict(re.findall(r"^\s*<(\w+)>\s*=\s*(\d+);", keymap, re.M))
+    aliases = dict(re.findall(r"^\s*alias\s*<(\w+)>\s*=\s*<(\w+)>;", keymap, re.M))
+    names = {}
+    for key, body in re.findall(r"key\s+<(\w+)>\s*\{([^}]*)\}", keymap):
+        # Bodies look like "[ w, W ]" or 'type= "...", symbols[1]= [ Print, Sys_Req ]'.
+        m = re.search(r"\[\s*([^\],\s]+)", re.sub(r"(symbols|actions)\[\w+\]", "", body))
+        code = codes.get(key) or codes.get(aliases.get(key, ""))
+        if m and code and code not in names:
+            names[code] = m.group(1).upper()
+    json.dump(names, sys.stdout)
+
+
+if __name__ == "__main__":
+    main()

@@ -38,16 +38,19 @@ ColumnLayout {
         Keycap {
           id: caps
           anchors.right: parent.right
+          opacity: modelData.state === "known" ? 0.5 : 1
           keys: modelData.keys !== undefined ? modelData.keys : modelData.key
           theme: root.theme
         }
       }
 
+      // Learning markers: shortcuts you already use fade; a few worth trying
+      // get the accent color.
       Text {
         Layout.fillWidth: true
         text: modelData.desc
-        color: root.theme.text
-        opacity: 0.95
+        color: modelData.state === "new" ? root.theme.heading : root.theme.text
+        opacity: modelData.state === "known" ? 0.45 : 0.95
         elide: Text.ElideRight
         font.family: Style.font.family
         font.pixelSize: Style.font.heading

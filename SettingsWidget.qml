@@ -14,14 +14,15 @@ Panel {
   ipcTarget: "keyhints-panel"
 
   readonly property string settingsPath: Quickshell.env("HOME") + "/.config/keyhints/settings.json"
-  property var prefs: ({ enabled: true, appHints: true, holdDelay: 300 })
+  property var prefs: ({ enabled: true, appHints: true, holdDelay: 300, learning: true, overFullscreen: false })
+  property var stats: null   // from the overlay: { known, learning, untried, total, presses, baseline }
 
   readonly property color foreground: bar ? bar.foreground : Commons.Color.foreground
   readonly property color dim: Qt.darker(foreground, 1.55)
   readonly property string fontFamily: bar ? bar.fontFamily : Style.font.family
 
   function load(text) {
-    var next = { enabled: true, appHints: true, holdDelay: 300 }
+    var next = { enabled: true, appHints: true, holdDelay: 300, learning: true, overFullscreen: false }
     try {
       var saved = JSON.parse(text || "{}")
       for (var k in next) if (saved[k] !== undefined) next[k] = saved[k]
@@ -36,6 +37,24 @@ Panel {
     var json = JSON.stringify(next, null, 2) + "\n"
     settingsFile.setText(json)
     Quickshell.execDetached(["omarchy-shell", "-q", "keyhints", "setPrefs", json])
+  }
+
+  function refreshStats() {
+    statsProcess.running = false
+    statsProcess.running = true
+  }
+
+  onOpenedChanged: if (opened) refreshStats()
+
+  Process {
+    id: statsProcess
+    command: ["omarchy-shell", "keyhints", "stats"]
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
+        try { root.stats = JSON.parse(text) } catch (e) { root.stats = null }
+      }
+    }
   }
 
   implicitWidth: button.implicitWidth
@@ -71,7 +90,7 @@ Panel {
     open: root.opened
     focusTarget: keyCatcher
     contentWidth: panel.fittedContentWidth(Style.space(340))
-    contentHeight: panel.fittedContentHeight(column.implicitHeight, Style.space(480))
+    contentHeight: panel.fittedContentHeight(column.implicitHeight, Style.space(720))
 
     PanelKeyCatcher {
       id: keyCatcher
@@ -137,6 +156,73 @@ Panel {
           onClicked: root.set("appHints", !root.prefs.appHints)
         }
 
+        Toggle {
+          width: parent.width
+          label: "Show over full-screen windows"
+          description: "Off: hidden over full-screen apps (Super F), like videos and presentations. Steam games never show hints."
+          checked: root.prefs.overFullscreen
+          enabled: root.prefs.enabled
+          foreground: root.foreground
+          onClicked: root.set("overFullscreen", !root.prefs.overFullscreen)
+        }
+
+        PanelSeparator { foreground: root.foreground }
+
+        PanelSectionHeader {
+          text: "LEARNING"
+          foreground: root.foreground
+          fontFamily: root.fontFamily
+        }
+
+        Toggle {
+          width: parent.width
+          label: "Learn from my usage"
+          description: "Counts which Super shortcuts you press, on this machine only (never typing). Ones you know fade; a few worth trying get highlighted."
+          checked: root.prefs.learning
+          enabled: root.prefs.enabled
+          foreground: root.foreground
+          onClicked: root.set("learning", !root.prefs.learning)
+        }
+
+        Item {
+          width: parent.width
+          height: Math.max(statsText.implicitHeight, resetButton.implicitHeight)
+          visible: root.prefs.learning && root.stats !== null
+
+          Text {
+            id: statsText
+            anchors.left: parent.left
+            anchors.right: resetButton.left
+            anchors.rightMargin: Style.space(10)
+            anchors.verticalCenter: parent.verticalCenter
+            wrapMode: Text.WordWrap
+            text: !root.stats ? ""
+              : root.stats.presses < root.stats.baseline
+                ? "Getting to know you: " + root.stats.presses + " of " + root.stats.baseline + " shortcut presses before hints adapt."
+                : "You use " + root.stats.known + " of " + root.stats.total + " shortcuts, are learning "
+                  + root.stats.learning + ", and haven't tried " + root.stats.untried + "."
+            color: root.dim
+            font.family: root.fontFamily
+            font.pixelSize: Style.font.caption
+          }
+
+          Button {
+            id: resetButton
+            anchors.right: parent.right
+            anchors.verticalCenter: parent.verticalCenter
+            text: "Reset"
+            bordered: true
+            foreground: root.foreground
+            fontFamily: root.fontFamily
+            onClicked: {
+              Quickshell.execDetached(["omarchy-shell", "-q", "keyhints", "resetUsage"])
+              statsDelay.restart()
+            }
+          }
+
+          Timer { id: statsDelay; interval: 300; onTriggered: root.refreshStats() }
+        }
+
         PanelSeparator { foreground: root.foreground }
 
         PanelSectionHeader {
@@ -161,7 +247,7 @@ Panel {
         Text {
           width: parent.width
           wrapMode: Text.WordWrap
-          text: "Pressing any shortcut hides the hints. Steam games never show them."
+          text: "Pressing a shortcut, dragging with the mouse or switching workspace hides the hints until you let go of Super."
           color: root.dim
           font.family: root.fontFamily
           font.pixelSize: Style.font.caption

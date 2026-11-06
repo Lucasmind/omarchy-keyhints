@@ -31,6 +31,14 @@ var SUPER_EXTRAS = [
   { mods: "SUPER ALT", rx: /^Move window to scratchpad$/ }
 ]
 
+// Usage learning. view() sets these from ctx before building rows; collapse()
+// then marks each row "known" (you use it), "new" (never tried) or "".
+var KNOWN_USES = 8
+var usage = {}        // "SUPER SHIFT+1" -> recent presses
+var learning = false  // markers only once there's a baseline of presses
+
+function usageId(b) { return b.mods + "+" + b.key.toUpperCase() }
+
 var CATEGORIES = [
   { name: "Workspaces", rx: /workspace|scratchpad/i },
   { name: "Window", rx: /window|full screen|full width|split|float|pseudo|group|gaps|focus|swap|expand|shrink|aspect/i },
@@ -122,6 +130,10 @@ function collapse(bindings) {
         .map(function(k) { return DIRECTIONS[k] }).join("")
     }
   })
+  rows.forEach(function(row) {
+    row.uses = row.members.reduce(function(sum, m) { return sum + (usage[usageId(m)] || 0) }, 0)
+    row.state = !learning ? "" : row.uses >= KNOWN_USES ? "known" : row.uses === 0 ? "new" : ""
+  })
   return rows
 }
 
@@ -139,7 +151,7 @@ function contextualize(row, flags) {
   else if (d === "Switch to workspace") d = "Go to workspace"
   else if (d === "File manager (cwd)") d = "Files in this folder"
   else if (d === "Toggle window split") d = "Flip split direction"
-  return { key: row.key, desc: d, category: row.category }
+  return { key: row.key, desc: d, category: row.category, state: row.state || "" }
 }
 
 function priority(row) {
@@ -193,10 +205,13 @@ function pick(rows, patterns) {
 }
 
 // { sections: [{ title, rows }], launcher: [rows], hidden, total, next: [{ mod, count, summary }] }
-// ctx: { winClass, chain } - chain is the focused window's app stack, outermost first.
+// ctx: { winClass, chain, appHints, usage, learning } - chain is the focused
+// window's app stack, outermost first; usage maps usageId -> recent presses.
 function view(bindings, mods, flags, maxRows, ctx) {
   mods = canonicalMods(mods)
   ctx = ctx || {}
+  usage = ctx.usage || {}
+  learning = ctx.learning === true
   var chain = ctx.chain || []
   var emptyDesktop = !ctx.winClass
   var appHints = ctx.appHints !== false  // off = Omarchy shortcuts only
@@ -221,7 +236,10 @@ function view(bindings, mods, flags, maxRows, ctx) {
       suggested = pick(everything, rule.picks).map(function(r) { return contextualize(r, flags || "") })
       rows = rows.filter(function(r) { return r.category !== "Apps" })
     }
-    rows.sort(function(a, b) { return priority(a) - priority(b) })
+    // Shortcuts you already use sink to the bottom, so they're the first cut.
+    rows.sort(function(a, b) {
+      return (a.state === "known") - (b.state === "known") || priority(a) - priority(b)
+    })
     var extras = emptyDesktop ? [] : extraRows(bindings)
     var room = Math.max(0, maxRows - extras.length - suggested.length)
     rows = rows.slice(0, room).concat(extras, rows.slice(room))
@@ -239,6 +257,15 @@ function view(bindings, mods, flags, maxRows, ctx) {
       var inner = chain.length ? chain[chain.length - 1] : ""
       sections.push({ title: inner ? "Handy with " + inner : "Handy apps", rows: suggested, accent: true })
     }
+  })
+
+  // Highlight only the three most useful untried shortcuts in view; marking
+  // every unused row would be noise.
+  var tries = 0
+  sections.forEach(function(sec) {
+    sec.rows.forEach(function(r) {
+      if (r.state === "new") r.state = tries++ < 3 ? "new" : ""
+    })
   })
 
   return { sections: sections, launcher: launcher, hidden: total - shown.length, total: total,
@@ -272,6 +299,27 @@ function nextLayers(bindings, mods) {
     rows.forEach(function(r) { counts[r.category] = (counts[r.category] || 0) + 1 })
     var top = Object.keys(counts).sort(function(a, b) { return counts[b] - counts[a] }).slice(0, 2)
     out.push({ mod: mod, count: rows.length, summary: top.join(" · ").toLowerCase() })
+  })
+  return out
+}
+
+// For the settings panel: how many Super shortcuts you use, are learning, or
+// have never tried. Families count once (1–0 is one shortcut to learn).
+function usageStats(bindings, usageMap) {
+  usage = usageMap || {}
+  learning = true
+  var rows = []
+  var sets = {}
+  bindings.forEach(function(b) {
+    if (b.mods.split(" ").indexOf("SUPER") === -1) return
+    ;(sets[b.mods] = sets[b.mods] || []).push(b)
+  })
+  Object.keys(sets).forEach(function(m) { rows = rows.concat(collapse(sets[m])) })
+  var out = { known: 0, learning: 0, untried: 0, total: rows.length }
+  rows.forEach(function(r) {
+    if (r.state === "known") out.known++
+    else if (r.state === "new") out.untried++
+    else out.learning++
   })
   return out
 }
